@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>探空资料组装台</title>
+<style>
+:root{--bg:#0f141b;--panel:#171f29;--panel2:#1e2836;--ink:#e6edf3;--mut:#8ea3b8;--line:#2a3848;--acc:#4aa8ff;--ok:#3fb950;--warn:#d29922;--bad:#f85149;--ice:#7ad1ff;--float:#c792ea}
+*{box-sizing:border-box}
+body{margin:0;font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;background:var(--bg);color:var(--ink)}
+header{display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+header h1{font-size:15px;margin:0;font-weight:600}
+input,select,button,textarea{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px 9px;font:inherit}
+button{cursor:pointer}
+button:hover{border-color:var(--acc)}
+button.primary{background:var(--acc);color:#04121f;border-color:var(--acc);font-weight:600}
+button.danger{border-color:var(--bad);color:#ffb4b0}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.spacer{flex:1}
+main{display:grid;grid-template-columns:330px 1fr 380px;gap:12px;padding:12px;align-items:start}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px}
+.card h2{font-size:12px;margin:0 0 8px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
+.mut{color:var(--mut)}
+.small{font-size:11px}
+table{width:100%;border-collapse:collapse;font-size:11.5px}
+th,td{padding:3px 6px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{color:var(--mut);font-weight:600;position:sticky;top:0;background:var(--panel)}
+.scroll{max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.tag{display:inline-block;padding:1px 6px;border-radius:99px;font-size:10px;border:1px solid var(--line);margin:1px}
+.t-ascent{color:#79c0ff;border-color:#1f6feb}.t-descent{color:#ffb4b0;border-color:#f85149}
+.t-float{color:var(--float);border-color:#8957e5}.t-terminate{color:var(--mut);border-color:#6e7681}
+.flag{background:#21304266;border-color:#33506e;color:#9fd0ff}
+.flag.bad{background:#3d222266;border-color:#7e2f2f;color:#ff9d97}
+.miss{color:var(--warn)}
+svg{display:block;width:100%;background:#0c1117;border:1px solid var(--line);border-radius:8px}
+.axis{stroke:var(--line);stroke-width:1}.grid{stroke:#1c2632;stroke-width:1}
+.lbl{fill:var(--mut);font-size:9.5px}.curve{fill:none;stroke-width:1.6}
+.point{cursor:pointer}.pt-sel{stroke:#fff;stroke-width:1.5}
+.branchband{opacity:.09}
+.legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px}
+.pill{padding:2px 8px;border-radius:99px;background:var(--panel2);border:1px solid var(--line);font-size:11px}
+.ver{display:flex;gap:6px;align-items:center;padding:6px 8px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px;cursor:pointer}
+.ver.active{border-color:var(--acc);background:#132333}
+.ver.pub{border-color:var(--ok)}
+.toast{position:fixed;bottom:16px;right:16px;background:var(--panel2);border:1px solid var(--acc);border-radius:8px;padding:10px 14px;max-width:420px;z-index:50;box-shadow:0 8px 30px #0008}
+.toast.bad{border-color:var(--bad)}
+details summary{cursor:pointer;color:var(--mut)}
+.kv{display:grid;grid-template-columns:110px 1fr;gap:2px 8px;font-size:11.5px}
+.kv b{color:var(--mut);font-weight:500}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+button.mini{padding:2px 7px;font-size:11px}
+</style>
+</head>
+<body>
+<header>
+  <h1>🎈 探空资料组装台</h1>
+  <input id="sid" value="demo" style="width:120px" placeholder="sounding id">
+  <span class="pill" id="pubState">未发布</span>
+  <div class="spacer"></div>
+  <div class="row">
+    <input id="analyst" value="alice" style="width:100px" placeholder="判定人">
+    <button onclick="loadSounding()">刷新</button>
+  </div>
+</header>
+
+<main>
+  <!-- LEFT: timeline + raw -->
+  <section>
+    <div class="card">
+      <h2>模拟器（乱序 / 重放）</h2>
+      <div class="row">
+        <button class="mini" onclick="sim('start')">初始化航班</button>
+        <button class="mini" onclick="sim('next')">送 1 包</button>
+        <button class="mini" onclick="sim('batch')">送 8 包</button>
+        <button class="mini primary" onclick="sim('all')">一次全部</button>
+        <button class="mini" onclick="sim('replay')">重放</button>
+      </div>
+      <div class="small mut" id="simStatus" style="margin-top:6px"></div>
+    </div>
+
+    <div class="card">
+      <h2>版本（草稿 / 候选 / 已发布）</h2>
+      <div id="versions"></div>
+      <div class="row" style="margin-top:6px">
+        <button class="mini primary" onclick="publishSelected()">发布所选版本</button>
+        <button class="mini" onclick="rebuild()">重跑算法</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>原始时线 <span class="mut" id="rawCount"></span></h2>
+      <div class="scroll" style="max-height:300px">
+        <table id="rawTable">
+          <thead><tr><th>#</th><th>seq</th><th>观测时间</th><th>到达</th><th>P</th><th>T</th><th>RH</th><th>标记</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- CENTER: profiles -->
+  <section>
+    <div class="card">
+      <h2>运动分支与高度/气压剖面</h2>
+      <div class="row small" style="margin-bottom:6px">
+        <span class="pill">版本 <b id="curVer">-</b></span>
+        <span class="pill" id="curKind"></span>
+        <span class="spacer"></span>
+        <label><input type="checkbox" id="showDescent" checked onchange="render()"> 下降支</label>
+        <label><input type="checkbox" id="showAscent" checked onchange="render()"> 上升支</label>
+        <label><input type="checkbox" id="showFloat" checked onchange="render()"> 漂浮</label>
+      </div>
+      <svg id="chart" viewBox="0 0 760 420" height="420"></svg>
+      <div class="legend small">
+        <span><i style="background:#79c0ff"></i>上升</span>
+        <span><i style="background:#ffb4b0"></i>下降</span>
+        <span><i style="background:var(--float)"></i>漂浮</span>
+        <span><i style="background:var(--warn)"></i>气压反向</span>
+        <span><i style="background:var(--ice)"></i>结冰</span>
+        <span><i style="background:#888"></i>GPS断点</span>
+      </div>
+      <svg id="ptime" viewBox="0 0 760 150" height="150" style="margin-top:10px"></svg>
+      <div class="small mut" style="margin-top:4px">下图：气压-时间（展示短时反向与迟到包）；上图：气压纵轴剖面（分支分色）。点击点查看依据。</div>
+    </div>
+
+    <div class="card">
+      <h2>分支转移</h2>
+      <div id="transitions" class="small"></div>
+    </div>
+
+    <div class="card">
+      <h2>标准压力层</h2>
+      <div class="scroll" style="max-height:320px">
+        <table id="layerTable">
+          <thead><tr><th>分支</th><th>P(hPa)</th><th>T(℃)</th><th>RH(%)</th><th>高度(m)</th><th>来源</th><th>缺失原因</th><th>标志</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- RIGHT: judgments + evidence -->
+  <section>
+    <div class="card">
+      <h2>人工判定</h2>
+      <div class="small mut" style="margin-bottom:6px">在原始时线/剖面选中时间区间后操作。人工判定与自动识别分层保存，重跑不会改写已发布剖面。</div>
+      <div class="row" style="margin-bottom:6px">
+        <button class="mini" onclick="markPhase('descent')">标为下降</button>
+        <button class="mini" onclick="markPhase('ascent')">标为上升</button>
+        <button class="mini" onclick="markPhase('float')">标为漂浮</button>
+      </div>
+      <div class="row" style="margin-bottom:6px">
+        <button class="mini" onclick="markIcing()">圈为结冰区间</button>
+      </div>
+      <div id="conflictBox"></div>
+      <div class="kv small" style="margin-top:6px">
+        <b>选区</b><span id="selInfo" class="mono">未选择</span>
+      </div>
+      <textarea id="reason" placeholder="判定理由（可选）" style="width:100%;margin-top:6px;height:44px"></textarea>
+    </div>
+
+    <div class="card">
+      <h2>已签字判定</h2>
+      <div class="scroll" style="max-height:180px"><table id="judgeTable"><thead><tr><th>类型</th><th>区间/序号</th><th>人</th><th>理由</th></tr></thead><tbody></tbody></table></div>
+    </div>
+
+    <div class="card">
+      <h2>质量标志依据</h2>
+      <div id="evidence" class="small"></div>
+    </div>
+
+    <div class="card">
+      <h2>选中点详情</h2>
+      <div id="ptDetail" class="small">点击剖面或时线上的点</div>
+    </div>
+  </section>
+</main>
+
+<div id="toasts"></div>
+<script src="app.js"></script>
+</body>
+</html>
