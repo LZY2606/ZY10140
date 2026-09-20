@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>探空资料组装台</title>
+<style>
+  :root { --bg:#0f1420; --panel:#171e2e; --ink:#e6ebf5; --mut:#8b96ad; --line:#28324a;
+          --asc:#4ea1ff; --flo:#f0b93b; --des:#ff7a59; --ter:#9a6bff; --ok:#3ecf8e; --bad:#ff5d5d; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:13px/1.5 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--ink); }
+  header { display:flex; align-items:center; gap:12px; padding:10px 16px; background:var(--panel); border-bottom:1px solid var(--line); }
+  header h1 { font-size:15px; margin:0; }
+  select, button, input { background:#10182a; color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:6px 8px; }
+  button { cursor:pointer; }
+  button:hover { border-color:#3d5178; }
+  .muted { color:var(--mut); }
+  main { display:grid; grid-template-columns: 220px 1fr 360px; gap:10px; padding:10px; height:calc(100vh - 49px); }
+  .col { overflow:auto; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px; }
+  .sounding { padding:8px; border:1px solid var(--line); border-radius:8px; margin-bottom:6px; cursor:pointer; }
+  .sounding.active { border-color:var(--asc); background:#13203a; }
+  .card { margin-bottom:12px; }
+  .card h2 { font-size:13px; margin:0 0 8px; color:var(--mut); text-transform:uppercase; letter-spacing:.05em; }
+  svg { width:100%; background:#0d1322; border:1px solid var(--line); border-radius:8px; }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  th,td { border-bottom:1px solid var(--line); padding:3px 5px; text-align:right; white-space:nowrap; }
+  th:first-child,td:first-child { text-align:left; }
+  .tag { display:inline-block; padding:0 6px; border-radius:10px; font-size:11px; margin:1px 2px; }
+  .tag.info{background:#213;color:#9cc0ff;border:1px solid #335}
+  .tag.warning{background:#33281a;color:#f0b93b;border:1px solid #5a4622}
+  .tag.error{background:#3a1d1d;color:#ff8a8a;border:1px solid #5a2a2a}
+  .ph-ascent{color:var(--asc);} .ph-float{color:var(--flo);}
+  .ph-descent{color:var(--des);} .ph-terminated{color:var(--ter);}
+  .row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin:6px 0; }
+  .miss { color:var(--bad); font-size:11px; }
+  .alt { stroke-dasharray:3 3; opacity:.8; }
+  dialog { background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:10px; width:420px; }
+  dialog::backdrop { background:rgba(0,0,0,.5); }
+  .legend span { margin-right:10px; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎈 探空资料组装台</h1>
+  <select id="soundingSelect"></select>
+  <button id="newBtn">新建探空</button>
+  <button id="simBtn">灌入模拟乱序包</button>
+  <span id="revInfo" class="muted"></span>
+  <span style="flex:1"></span>
+  <input id="author" placeholder="判定人工号" value="analyst-a">
+  <button id="publishBtn">发布当前剖面（签字）</button>
+</header>
+<main>
+  <div class="col" id="leftCol"><div class="card"><h2>探空批次</h2><div id="soundingList"></div></div></div>
+  <div class="col" id="midCol">
+    <div class="card">
+      <h2>原始时线（气压 / 状态）</h2>
+      <svg id="timeline" height="180"></svg>
+      <div class="row muted legend">
+        <span><i class="dot" style="background:var(--asc)"></i>上升</span>
+        <span><i class="dot" style="background:var(--flo)"></i>漂浮</span>
+        <span><i class="dot" style="background:var(--des)"></i>下降</span>
+        <span><i class="dot" style="background:var(--ter)"></i>终止</span>
+        <span class="muted">虚线=保留的候选轨迹</span>
+      </div>
+    </div>
+    <div class="card">
+      <h2>高度 / 气压剖面</h2>
+      <svg id="profile" height="260"></svg>
+    </div>
+    <div class="card">
+      <h2>分支转移</h2>
+      <table id="transTable"><thead><tr><th>#</th><th>由</th><th>到</th><th>依据</th><th>来源</th><th>序号</th></tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+  <div class="col" id="rightCol">
+    <div class="card">
+      <h2>重复包 / 候选轨迹</h2>
+      <div id="conflicts"></div>
+    </div>
+    <div class="card">
+      <h2>标准压力层</h2>
+      <div class="row">
+        分支：<select id="branchSelect"></select>
+        <span class="muted" id="signedInfo"></span>
+      </div>
+      <table id="levelTable"><thead><tr><th>hPa</th><th>高度m</th><th>温度</th><th>湿度</th><th>状态</th></tr></thead><tbody></tbody></table>
+    </div>
+    <div class="card">
+      <h2>质量标志依据</h2>
+      <div id="flagList" class="muted">点击时线上的点查看依据</div>
+    </div>
+  </div>
+</main>
+
+<dialog id="dlg">
+  <h3 id="dlgTitle">判定</h3>
+  <div id="dlgBody"></div>
+  <div class="row" style="justify-content:flex-end">
+    <button onclick="dlg.close()">取消</button>
+    <button id="dlgOk" style="border-color:var(--ok)">提交判定</button>
+  </div>
+</dialog>
+<script src="/app.js"></script>
+</body>
+</html>
